@@ -7,11 +7,39 @@
 body {
 }
 svg {
-    width:500px;
-    height: 600px;
-	background-color:#ccc;
+	border: 1px solid gray;
+	background-color:#f6f6ff;
+	height: 600px;
+	width:500px;
+	overflow: hidden;
 }
 
+div.overlay {
+    display:        table;
+    position:       fixed;
+    top:            0;
+    left:           0;
+    width:          100%;
+    height:         100%;
+    z-index: 9999;
+    filter: alpha(opacity=80);
+    -moz-opacity:0.80;
+    opacity:0.80;
+  }
+div.overlay > div {
+    display:        table-cell;
+    width:          100%;
+    height:         100%;
+    color:          white;
+    background:     black;
+    text-align:     center;
+    vertical-align: middle;
+}
+
+
+.hidden {
+	display:none;
+}
 
 
 </style>
@@ -19,174 +47,363 @@ svg {
 
 
 <body>
+<div class="overlay"><div>Loading...</div></div>
 <h2>LOCAL GOOD YOKOHAMA datavisualizathon vol.1</h2>
-<svg></svg>
+<p>Click: Labels Visible or Hidden</p>
+<svg>
+	
+	<g id="base"></g>
+	<g id="point"></g>
+	<g id="hexbin"></g>
+	<g id="rail"></g>
+	<g id="text"></g>
+</svg>
 
 
 
 
-<script src="d3.min.js"></script>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="http://d3js.org/topojson.v1.min.js"></script>
+<script src="loadDataSet.js?1"></script>
+<script src="d3.hexbin.v0.min.js"></script>
+
 <script>
+var w=500, h=600;
+
+	var de;
+	
 //topojsonのパーサ
 var parseTopo = function(json){
 	return topojson.feature(json, json.objects.yokohama).features;
 }
 
 d3.csv("data/jinkou.csv", function(csv){
-	d3.json("data/yokohama_kanso.geojson", function(json) {
+	d3.json("data/yokohama.topojson", function(json) {
+		de = json;
 		d3main(json, csv);
 	});
 });	
 
 function d3main(json, csv){
-	var svg = d3.select("svg")
-
-	var geodata = json.features;
+	var svg = d3.select("svg").attr({
+		width:w,
+		height:h
+	})
 	
+	//表示レイヤー
+	var baseLayer = d3.select("#base");
+	var pointLayer = d3.select("#point");
+	var hexLayer = d3.select("#hexbin");
+	var railLayer = d3.select("#rail");
+	var textLayer = d3.select("#text");
+	
+
+	
+	svg.on("click", toggle(
+			function(){ textLayer.classed("hidden", true) },
+			function(){ textLayer.classed("hidden", false) }	
+	   ));
+	
+	var geodata = topojson.feature(json, json.objects.yokohama).features;
+	
+	//投影法設定
 	var projection = d3.geo
 		.mercator()
 		.scale(100000)	
-		.translate([320,300])
+		.translate([320,320])
 		.center([139.6380256, 35.4437078]);
+	
+	//パスストリングジェネレーター
 	var path = d3.geo.path().projection(projection);
 
-	de = projection;
 	
-	//地図表示
-	var map =  svg.append("g")
-		.selectAll("path")
-		.data(geodata)
-		.enter()
-		.append("svg:path")
-//		.addClass(function(d){ return d.properties.SIKUCHOSON; })
-		.attr({
-			"class": function(d){ return d.properties.SIKUCHOSON; },
-			"d": function(d){ return path(d) },
-			"fill": "#ccc",
-			"stroke": "white"
-		})
-		.append("title")
-		.text(function(d){ return d.properties.SIKUCHOSON });
+	setSVGFillter(svg);
+	
+	geoMapDraw(baseLayer, geodata)
+	geoMapFill(csv);
+	getTextDraw(textLayer, geodata, "city_label", {
+			fill: "#004400",
+			"text-anchor": "middle",
+			"font-weight": "bold",
+			"font-size": 10
+		});
+
+	//スクール属性設定
+	var jschoolAttr = {
+				r:2,
+				fill:"blue",
+				stroke:"blue",
+				"stroke-width":2		
+		};
+	
+	//幼稚園・保育園属性設定
+	var 	nurseryAttr = {
+				r:2,
+				fill:"red",
+				stroke:"red",
+				"stroke-width":2		
+		}
+	
+	//路線属性	
+	var railAttr = 	{
+			fill:"none",
+			stroke:"teal",
+			"stroke-width":2,
+			"stroke-dasharray": "1",
+		}
+
+	//路線属性	
+	var stationAttr = 	{
+			fill:"lime",
+			stroke:"teal",
+			"stroke-width":1,
+		}
 		
+		
+	d3.loadDataSet({
+		files: [
+			{key:"jschool" ,date:"小学校", file:"data/school.geojson"},
+			{key:"ninkagai-hoikuen" ,label:"認可外保育園", file:"data/ninkagai-hoikuen.geojson"},		
+			{key:"hoikuen" ,label:"認可保育園", file:"data/hoikuen.geojson"},		
+			{key:"youchien" ,label:"幼稚園", file:"data/youchien.geojson"},		
+			{key:"kodomoen" ,label:"子供園", file:"data/kodomoen.geojson"},		
+			{key:"rail" ,label:"路線図", file:"data/rail.geojson"},
+			{key:"station" ,label:"駅", file:"data/station.geojson"},
+		],
+		// loadingStartFn: function(a){ d3.select("body").append("p").text(a.key+" data loading...") },
+		loadingSuccessFn:function(d){
+			switch(d.option.key){
+				case 'rail':
+					geoLainDraw(railLayer,  d.data, d.option.key, railAttr);					
+				break;
+				case 'station':
+					geoLainDraw(railLayer,  d.data, d.option.key, stationAttr);					
+				break;
+				case 'jschool':
+					//geoPointDraw(pointLayer,  d.data, d.option.key, jschoolAttr);
+				break;
+				default:
+					//geoPointDraw(pointLayer,  d.data, d.option.key, nurseryAttr);					
+				break;
+			}				
+		},
+		endFn:function(d){
+			d3.select(".overlay").remove();
+			
+			var nurseryTmp = [].concat(
+					d['ninkagai-hoikuen'].data.features,
+					d['hoikuen'].data.features,
+					d['youchien'].data.features,
+					d['kodomoen'].data.features
+				);
+			
+			var nurseryPositions = combertPointArray(nurseryTmp);
+			var nurseryHex = hexbinDraw(hexLayer, nurseryPositions, "nurseryHex", ["lavenderblush", "deeppink"]);
+
+			var jSchoolPositions = combertPointArray(d['jschool'].data.features);
+			var jScoolHex = hexbinDraw(hexLayer, jSchoolPositions, "jschoolHex", ["aqua", "blue"]);
+			
+			
+		}
+	});
+	
+
+function combertPointArray(features){
+        var positions = [];
+        features.forEach(function(features) {
+            var point = projection(features.geometry.coordinates);//位置情報→ピクセル
+            positions.push([point[0], point[1]]); 
+        });
+		return positions;
+}
+
+function hexbinDraw(parent, positions, elmClass,range, attr) {
+	
+	    //六角形を塗るカラースケールを作成
+        var hexColor = d3.scale.linear()
+            .domain([0, 3])
+            .range(range)
+            .interpolate(d3.interpolateLab);
+        
+        //hex生成関数    
+        var hexbin = d3.hexbin()
+            .size([w, h])
+            .radius(5);
+
+        //hex生成
+        var hexObj = parent.append("g")
+            .selectAll("." + elmClass)
+            .data(hexbin(positions)) //positionsデータからhexデータを生成
+            .enter()
+            .append("path")
+            .attr("class", elmClass)
+            .attr({
+                "d": hexbin.hexagon(),
+                "transform": function(d) { return "translate(" + d.x + "," + d.y + ")"; },
+                "stroke": "gray",
+                "fill":function(d) { return hexColor(d.length); }, //六角形内の基点の数によって色の濃度を調整
+                "opacity": 1
+            });
+		
+		return hexObj;
+}
+
+ 
+function geoMapDraw(parent, geodata){
+		
+
+	//地図表示	
+	var map =  parent.selectAll(".map")
+		.data(geodata)	
+		.enter()
+		.append("path")
+		.attr({
+			"class": function(d){ return d.properties.SIKUCHOSON + " map"; },
+			"d": function(d){ return path(d) },
+			"fill": "#ddd",
+			"stroke": "white",
+			"stroke-width": function(d) {  return  (d.properties.SEIREI === "横浜市") ? 2:  0; }
+		})
+
+		
+  parent.append("path")
+      .datum( topojson.merge(de, de.objects.yokohama.geometries.filter(function(d) {  return  (d.properties.SEIREI === "横浜市") ? d:  null; }) ) )
+      .attr("fill", "white")
+      .attr("fill-opacity", 0.1)
+      .attr("stroke", "white")
+	  .attr("filter", "url(#drop-shadow)")
+      .attr("d", path);	
+		
+		return map;
+}
+
+//csvのデータを元に色塗り。	
+function geoMapFill(csv){	
 	var csvExtent = d3.extent(csv, function(d){
 		return +d['hiritsu'];
 	});
 	
 	//カラースケール
-	var colorScale = d3.scale.linear()	.domain(csvExtent).range(["yellow", "orange"])
+	var colorScale = d3.scale.linear().domain(csvExtent).range(["white", "orange"]);
 		
 	//地図色塗り	
 	csv.map(function(d){
 		d3.select("."+d['city']).attr({
 			"fill":colorScale(d['hiritsu']),
-			"fill-opacity": 0.7
+			"fill-opacity": 1
 		});
 	});
-	
-	
- //小学校ポイント表示
- d3.json("data/school.geojson", function(json){
-		svg.selectAll(".school")
-			.data(json.features)
+}
+
+//ポイントデータをマッピング
+function geoPointDraw(parent, geojson, elmClass, attr){
+			parent.selectAll("." + elmClass)
+			.data(geojson.features)
 			.enter()
 			.append("circle")
 			.attr({
-				class:"school",
+				"class": elmClass,
 				cx: function(d){  return projection(d.geometry.coordinates)[0] },
 				cy: function(d){ return projection(d.geometry.coordinates)[1] },
-				r:2,
-				fill:"blue",
-				stroke:"blue",
-				"stroke-width":2
 			})
- });
+			.attr(attr);
+}
 
- 
- //認可保育園ポイント表示
- d3.json("data/ninkagai-hoikuen.geojson", function(json){
-		svg.selectAll(".ninkahoikuen")
-			.data(json.features)
-			.enter()
-			.append("circle")
-			.attr({
-				"class": "ninkahoikuen",
-				cx: function(d){  return projection(d.geometry.coordinates)[0] },
-				cy: function(d){ return projection(d.geometry.coordinates)[1] },
-				r:2,
-				fill:"red",
-				stroke:"red",
-				"stroke-width":2
-			})
- });
 
- //保育園ポイント表示
- d3.json("data/hoikuen.geojson", function(json){
-		svg.selectAll(".hoikuen")
-			.data(json.features)
-			.enter()
-			.append("circle")
-			.attr({
-				"class": "hoikuen",
-				cx: function(d){  return projection(d.geometry.coordinates)[0] },
-				cy: function(d){ return projection(d.geometry.coordinates)[1] },
-				r:2,
-				fill:"red",
-				stroke:"red",
-				"stroke-width":2
-			})
- });
-
-  //幼稚園ポイント表示
- d3.json("data/youchien.geojson", function(json){
-		svg.selectAll(".youchien")
-			.data(json.features)
-			.enter()
-			.append("circle")
-			.attr({
-				"class": "youchien",
-				cx: function(d){  return projection(d.geometry.coordinates)[0] },
-				cy: function(d){ return projection(d.geometry.coordinates)[1] },
-				r:2,
-				fill:"red",
-				stroke:"red",
-				"stroke-width":2
-			})
- });
-
-   //子供園ポイント表示
- d3.json("data/kodomoen.geojson", function(json){
-		svg.selectAll(".kodomoen")
-			.data(json.features)
-			.enter()
-			.append("circle")
-			.attr({
-				"class": "kodomoen",
-				cx: function(d){  return projection(d.geometry.coordinates)[0] },
-				cy: function(d){ return projection(d.geometry.coordinates)[1] },
-				r:2,
-				fill:"red",
-				stroke:"red",
-				"stroke-width":2
-			})
- });
-
- 
- //路線
- d3.json("data/rail.geojson", function(json){
-		svg.selectAll(".rail")
-			.data(json.features)
+//ポイントデータをマッピング
+function geoLainDraw(parent, geojson, elmClass, attr){
+			parent.selectAll("." + elmClass)
+			.data(geojson.features)
 			.enter()
 			.append("path")
 			.attr({
-				"class": "rail",
-				d: function(d){  return path(d.geometry) },
-				fill:"none",
-				stroke:"lime",
-				"stroke-width":2
+				"class": elmClass,
+				d: function(d){  return path(d.geometry) }
 			})
- });
+			.attr(attr);
+}
+
+
+function getTextDraw(parent, geojson, elmClass, attr){
+	console.log(geojson)
+			var g = parent.selectAll("." + elmClass)
+			.data(geojson)
+			.enter()
+			.append("g")			.attr({
+				"class": elmClass,
+			})
+			.attr("transform", function(d, i){
+				var center = path.centroid(d); //中心点取得
+				var x = ~~center[0]; 
+				var y = ~~center[1];
+				return "translate("+[x, y]+")";		    
+			})
+			
+			
+			g.append("rect")
+			.attr({
+				width:56,
+				height:20,
+				rx:2,
+				ry:2,
+				x:-28,
+				y:-13,
+				fill: "white",
+				stroke:function(d){ return  (d.properties.SEIREI === "横浜市") ? "white": "none" ;},
+				"stroke-width":2,
+				"fill-opacity":function(d){ return  (d.properties.SEIREI === "横浜市") ? 0.7: 0 ;}
+			})
+			
+			g.append("text")
+			.text(function(d){ return  (d.properties.SEIREI === "横浜市") ? d.properties.SIKUCHOSON: null ;})
+			.attr(attr)
+}
+
+
+function setSVGFillter(svg) {
+		//フィルター要素の追加
+	var filter = svg.append("defs").append('filter')
+		.attr({
+			"id": "drop-shadow",
+			"width": "150%",
+			"height": "150%"
+		});
+	 
+	//ガウス(ぼかし)フィルターを追加
+	filter.append('feGaussianBlur')
+		.attr({
+			"in": "SourceAlpha",
+			"result": "blur",
+			"stdDeviation": "2"
+		});
+	 
+	//平面移動フィルターを追加
+	filter.append('feOffset')
+		.attr({
+			"result": "offsetBlur",
+			"dx": 2,
+			"dy": 2
+		})
+	 
+	//上記２つのエフェクトをブレンド(マージ)するフィルターを追加
+	filter.append('feBlend')
+		.attr({
+			"in": "SourceGraphic",
+			"in2": "offsetBlur",
+			"mode": "normal"
+		});
+}
 	
-	
+}
+
+function toggle(){
+    var fn = arguments;
+    var l = arguments.length;
+    var i = 0;
+    return function(){
+        if(l <= i) i=0;
+        fn[i++]();            
+    }
 }
 </script>
 
