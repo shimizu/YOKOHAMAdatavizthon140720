@@ -1,0 +1,194 @@
+﻿<!DOCTYPE html>
+<meta charset="utf-8">
+<html>
+<head>
+<title>LOCAL GOOD YOKOHAMA datavisualizathon vol.1</title>
+<style>
+body {
+}
+svg {
+    width:500px;
+    height: 600px;
+	background-color:#ccc;
+}
+
+
+
+</style>
+</head>
+
+
+<body>
+<h2>LOCAL GOOD YOKOHAMA datavisualizathon vol.1</h2>
+<svg></svg>
+
+
+
+
+<script src="d3.min.js"></script>
+<script>
+//topojsonのパーサ
+var parseTopo = function(json){
+	return topojson.feature(json, json.objects.yokohama).features;
+}
+
+d3.csv("data/jinkou.csv", function(csv){
+	d3.json("data/yokohama_kanso.geojson", function(json) {
+		d3main(json, csv);
+	});
+});	
+
+function d3main(json, csv){
+	var svg = d3.select("svg")
+
+	var geodata = json.features;
+	
+	var projection = d3.geo
+		.mercator()
+		.scale(100000)	
+		.translate([320,300])
+		.center([139.6380256, 35.4437078]);
+	var path = d3.geo.path().projection(projection);
+
+	de = projection;
+	
+	//地図表示
+	var map =  svg.append("g")
+		.selectAll("path")
+		.data(geodata)
+		.enter()
+		.append("svg:path")
+//		.addClass(function(d){ return d.properties.SIKUCHOSON; })
+		.attr({
+			"class": function(d){ return d.properties.SIKUCHOSON; },
+			"d": function(d){ return path(d) },
+			"fill": "#ccc",
+			"stroke": "white"
+		})
+		.append("title")
+		.text(function(d){ return d.properties.SIKUCHOSON });
+		
+	var csvExtent = d3.extent(csv, function(d){
+		return +d['hiritsu'];
+	});
+	
+	//カラースケール
+	var colorScale = d3.scale.linear()	.domain(csvExtent).range(["yellow", "orange"])
+		
+	//地図色塗り	
+	csv.map(function(d){
+		d3.select("."+d['city']).attr({
+			"fill":colorScale(d['hiritsu']),
+			"fill-opacity": 0.7
+		});
+	});
+	
+	
+ //小学校ポイント表示
+ d3.json("data/school.geojson", function(json){
+		svg.selectAll(".school")
+			.data(json.features)
+			.enter()
+			.append("circle")
+			.attr({
+				class:"school",
+				cx: function(d){  return projection(d.geometry.coordinates)[0] },
+				cy: function(d){ return projection(d.geometry.coordinates)[1] },
+				r:2,
+				fill:"blue",
+				stroke:"blue",
+				"stroke-width":2
+			})
+ });
+
+ 
+ //認可保育園ポイント表示
+ d3.json("data/ninkagai-hoikuen.geojson", function(json){
+		svg.selectAll(".ninkahoikuen")
+			.data(json.features)
+			.enter()
+			.append("circle")
+			.attr({
+				"class": "ninkahoikuen",
+				cx: function(d){  return projection(d.geometry.coordinates)[0] },
+				cy: function(d){ return projection(d.geometry.coordinates)[1] },
+				r:2,
+				fill:"red",
+				stroke:"red",
+				"stroke-width":2
+			})
+ });
+
+ //保育園ポイント表示
+ d3.json("data/hoikuen.geojson", function(json){
+		svg.selectAll(".hoikuen")
+			.data(json.features)
+			.enter()
+			.append("circle")
+			.attr({
+				"class": "hoikuen",
+				cx: function(d){  return projection(d.geometry.coordinates)[0] },
+				cy: function(d){ return projection(d.geometry.coordinates)[1] },
+				r:2,
+				fill:"red",
+				stroke:"red",
+				"stroke-width":2
+			})
+ });
+
+  //幼稚園ポイント表示
+ d3.json("data/youchien.geojson", function(json){
+		svg.selectAll(".youchien")
+			.data(json.features)
+			.enter()
+			.append("circle")
+			.attr({
+				"class": "youchien",
+				cx: function(d){  return projection(d.geometry.coordinates)[0] },
+				cy: function(d){ return projection(d.geometry.coordinates)[1] },
+				r:2,
+				fill:"red",
+				stroke:"red",
+				"stroke-width":2
+			})
+ });
+
+   //子供園ポイント表示
+ d3.json("data/kodomoen.geojson", function(json){
+		svg.selectAll(".kodomoen")
+			.data(json.features)
+			.enter()
+			.append("circle")
+			.attr({
+				"class": "kodomoen",
+				cx: function(d){  return projection(d.geometry.coordinates)[0] },
+				cy: function(d){ return projection(d.geometry.coordinates)[1] },
+				r:2,
+				fill:"red",
+				stroke:"red",
+				"stroke-width":2
+			})
+ });
+
+ 
+ //路線
+ d3.json("data/rail.geojson", function(json){
+		svg.selectAll(".rail")
+			.data(json.features)
+			.enter()
+			.append("path")
+			.attr({
+				"class": "rail",
+				d: function(d){  return path(d.geometry) },
+				fill:"none",
+				stroke:"lime",
+				"stroke-width":2
+			})
+ });
+	
+	
+}
+</script>
+
+</body>
+</html>
